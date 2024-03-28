@@ -100,61 +100,32 @@ combined_tracks <- rbind(linus_tracks, maxwell_tracks)
 ## Data exploration
 
 ```{r}
-# compare mean energy, instrumentalness, tempo, duration, mode, and valence
+# look at summary of columns
+summary(combined_tracks)
+```
+
+
+```{r}
+# compare mean of certain features for Linus and Maxwell
 combined_tracks %>%
   group_by(name) %>%
-  summarise(mean_energy = mean(energy),
-            mean_instrumentalness = mean(instrumentalness),
-            mean_tempo = mean(tempo),
-            mean_duration = mean(duration_ms),
-            mean_mode = mean(mode),
+  summarise(mean_tempo = mean(tempo),
+            mean_danceability = mean(danceability),
             mean_valence = mean(valence)) %>% 
   ungroup()
 ```
 
 
 ```{r}
-# energy histograms
-Hmisc::histbackback(split(combined_tracks$energy, combined_tracks$name),
-             main = "Spotify liked songs comparison of energy", 
-             ylab = "energy",
-             xlab = c("linus", "maxwell"))
-```
-
-```{r}
-# instrumentalness histograms
-Hmisc::histbackback(split(combined_tracks$instrumentalness, combined_tracks$name),
-             main = "Spotify liked songs comparison of instrumentalness", 
-             ylab = "instrumentalness",
-             xlab = c("linus", "maxwell"))
-```
-
-```{r}
-# tempo histograms
+# compare distribution of certain features for Linus and Maxwell
 Hmisc::histbackback(split(combined_tracks$tempo, combined_tracks$name),
              main = "Spotify liked songs comparison of tempo", 
              ylab = "tempo",
              xlab = c("linus", "maxwell"))
-```
-
-```{r}
-# duration histograms
-Hmisc::histbackback(split(combined_tracks$duration_ms, combined_tracks$name),
-             main = "Spotify liked songs comparison of duration", 
-             ylab = "duration (milliseconds)",
+Hmisc::histbackback(split(combined_tracks$instrumentalness, combined_tracks$name),
+             main = "Spotify liked songs comparison of danceability", 
+             ylab = "danceability",
              xlab = c("linus", "maxwell"))
-```
-
-```{r}
-# mode histograms
-Hmisc::histbackback(split(combined_tracks$mode, combined_tracks$name),
-             main = "Spotify liked songs comparison of mode", 
-             ylab = "mode",
-             xlab = c("linus", "maxwell"))
-```
-
-```{r}
-# valence histograms
 Hmisc::histbackback(split(combined_tracks$valence, combined_tracks$name),
              main = "Spotify liked songs comparison of valence", 
              ylab = "valence",
@@ -510,7 +481,7 @@ single_tree_conf_matrix + bagged_trees_conf_matrix + rf_conf_matrix + sgb_conf_m
 metrics_tibble <- tibble(
   Method = factor(rep(c("Single DT", "Bagged DTs", "Random Forest", "SGB"), times = 2),
                   levels = c("Single DT", "Bagged DTs", "Random Forest", "SGB")),
-  Metric = rep(c("Accuracy", "ROC AUC"), each = 4),
+  Metric = rep(c("Accuracy", "Area under Receiver Operating Characteristic (ROC) curve"), each = 4),
   Value = c(single_tree_accuracy$.estimate[1], bagged_trees_accuracy$.estimate[1],
             rf_accuracy$.estimate[1], sgb_accuracy$.estimate[1],
             single_tree_roc_auc$.estimate[1], bagged_trees_roc_auc$.estimate[1],
@@ -566,11 +537,8 @@ ggplot(metrics_tibble, aes(x = Method, y = Value, fill = Metric)) +
 ```{r}
 # compare importance of different predictor variables in best performing model
 vip(sgb_fit, method = "model") +
-  ggtitle("Predictor variable importance in SGB model") +
+  ggtitle("Ten most important predictor variables in SGB model") +
   theme_minimal() +
   theme(plot.title = element_text(hjust = 0.5),
         axis.text.y = element_text(color = "black", size = 12))
 ```
-
-
-
