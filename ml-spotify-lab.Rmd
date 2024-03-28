@@ -183,45 +183,45 @@ cv_folds <- tracks_train %>% vfold_cv(v = 10)
 
 ## Decision tree model
 
-#### Build & tune model
+#### Build preliminary model & tune hyperparameters
 
 ```{r}
-# specify model for tuning tree parameters
+# specify model for tuning hyperparameters
 single_tree_spec <- decision_tree(
-  cost_complexity = tune(), # tune cost complexity for pruning tree (prevent overfitting)
+  cost_complexity = tune(), # tune cost complexity for pruning tree
   tree_depth = tune(), # tune maximum tree depth
   min_n = tune()) %>% # tune minimum n for a terminal node (minimum number of data points in a node that is required for the node to be split further)
   set_engine("rpart") %>%
   set_mode("classification")
 
-# create tuning grid for tree parameters
+# create tuning grid for hyperparameters
 tuning_grid <- grid_latin_hypercube(cost_complexity(),
-                                  tree_depth(),
-                                  min_n(),
-                                  size = 10)
+                                    tree_depth(),
+                                    min_n(),
+                                    size = 10)
 
-# create workflow for tuning tree parameters
+# create workflow for tuning hyperparameters
 single_tree_wf <- workflow() %>%
   add_recipe(tracks_recipe) %>%
   add_model(single_tree_spec)
 
-# tune tree parameters
+# tune hyperparameters using CV
 single_tree_tune <- tune_grid(single_tree_spec, 
                               as.factor(name) ~ ., 
                               resamples = cv_folds,
                               grid = tuning_grid,
                               metrics = metric_set(accuracy))
+```
 
-# specify final model with optimized parameters
+#### Build final model & predict testing data
+
+```{r}
+# specify final model with optimized hyperparameters
 single_tree_final <- finalize_model(single_tree_spec, select_best(single_tree_tune))
 
 # fit final model to training data
 single_tree_fit <- fit(single_tree_final, as.factor(name)~., tracks_train)
-```
 
-#### Predict testing data
-
-```{r}
 # predict testing data
 single_tree_predict <- predict(single_tree_fit, tracks_test) %>%
   bind_cols(tracks_test) %>%  # bind to testing df
@@ -233,7 +233,7 @@ single_tree_predict <- predict(single_tree_fit, tracks_test, type = "prob") %>%
   mutate(name = as.factor(name))
 
 # store confusion matrix for predictions made on testing data
-conf_matrix_tree <- single_tree_predict %>% 
+single_tree_conf_matrix <- single_tree_predict %>% 
   conf_mat(truth = name, estimate = .pred_class) %>% 
   autoplot(type = "heatmap") +
   ggtitle("DT") +
@@ -246,6 +246,185 @@ accuracy_tree <- accuracy(single_tree_predict, truth = name, estimate = .pred_cl
 roc_auc_tree <- roc_auc(single_tree_predict, truth = name, .pred_linus)
 
 ```
+
+## Bagged trees model
+
+#### Build final model & predict testing data (no tuning required)
+
+```{r}
+# specify model
+bagged_trees_spec <- bag_tree() %>%
+  set_engine("rpart", times = 50) %>% # specify number of trees (50-500 trees is usually sufficient)
+  set_mode("classification")
+
+# create workflow
+bagged_trees_wf <- workflow() %>%
+  add_recipe(tracks_recipe) %>%
+  add_model(bagged_trees_spec)
+
+# fit model to training data
+bagged_trees_fit <- bagged_trees_wf %>%
+  fit(data = tracks_train)
+
+# predict testing data
+bagged_trees_predict <- predict(bagged_trees_fit, tracks_test) %>% 
+  bind_cols(tracks_test) %>%  # bind to testing df
+  mutate(name = as.factor(name))
+
+# get probabilities for predictions made on testing data (to calculate ROC AUC)
+bagged_trees_predict <- predict(bagged_trees_fit, tracks_test, type = "prob") %>%
+  bind_cols(bagged_trees_predict) %>%  # bind to df that was just created
+  mutate(name = as.factor(name))
+
+# store confusion matrix for predictions made on testing data
+bagged_trees_conf_matrix <- bagged_trees_predict %>% 
+  conf_mat(truth = name, estimate = .pred_class) %>% 
+  autoplot(type = "heatmap") +
+  ggtitle("DT") +
+  theme_bw() +
+  theme(axis.text.x = element_text(angle = 30, hjust = 1),
+        legend.position = "none")
+
+# store error metrics of testing data predictions
+accuracy_tree <- accuracy(bagged_trees_predict, truth = name, estimate = .pred_class)
+roc_auc_tree <- roc_auc(bagged_trees_predict, truth = name, .pred_linus)
+
+```
+
+## Random forest model
+
+#### Build preliminary model & tune hyperparameters
+
+```{r}
+# specify model for tuning hyperparameters
+rf_spec <- rand_forest(trees = 500, # set number of trees to 500
+                       mtry = tune(), # tune mtry (number of unique features that will be considered at each split)
+                       min_n = tune()) %>% # tune minimum n for a terminal node (minimum number of data points in a node that is required for the node to be split further) 
+
+# create tuning grid for hyperparameters
+  tuning_grid <- grid_latin_hypercube(mtry(range = c(2, 4)), 
+                                      min_n(c(1, 10)),
+                                      size = 10)
+
+# create workflow for tuning hyperparameters
+rf_wf <- workflow() %>%
+  add_recipe(tracks_recipe) %>%
+  add_model(rf_spec)
+
+# tune hyperparameters using CV
+rf_tune <- tune_grid(rf_wf,
+                     resamples = cv_folds,
+                     grid = tuning_grid,
+                     metrics = metric_set(accuracy))
+```
+
+#### Build final model & predict testing data
+
+```{r}
+# specify final model with optimized hyperparameters
+rf_final <- finalize_model(rf_spec, select_best(rf_tune))
+
+# create workflow for final version of model
+rf_final_wf <- workflow() %>%
+  add_recipe(tracks_recipe) %>%
+  add_model(rf_final)
+
+# fit final workflow to training data
+rf_fit <- rf_final_wf %>%
+  fit(data = tracks_train)
+
+# predict testing data
+rf_predict <- predict(rf_fit, tracks_test) %>%
+  bind_cols(tracks_test) %>%  # bind to testing df
+  mutate(name = as.factor(name))
+
+# get probabilities for predictions made on testing data (to calculate ROC AUC)
+rf_predict <- predict(rf_fit, tracks_test, type = "prob") %>%
+  bind_cols(rf_predict) %>%  # bind to df that was just created
+  mutate(name = as.factor(name))
+
+# store confusion matrix for predictions made on testing data
+rf_conf_matrix <- rf_predict %>% 
+  conf_mat(truth = name, estimate = .pred_class) %>% 
+  autoplot(type = "heatmap") +
+  ggtitle("DT") +
+  theme_bw() +
+  theme(axis.text.x = element_text(angle = 30, hjust = 1),
+        legend.position = "none")
+
+# store error metrics of testing data predictions
+accuracy_tree <- accuracy(rf_predict, truth = name, estimate = .pred_class)
+roc_auc_tree <- roc_auc(rf_predict, truth = name, .pred_linus)
+```
+
+## Stochastic Gradient Boosting (SGB) model
+
+#### Build preliminary model & tune learning rate
+
+```{r}
+# specify model for tuning learning rate
+sgb_lr_spec <- boost_tree(mode = "regression",
+                      engine = "xgboost",
+                      learn_rate = tune())
+
+# create tuning grid for learning rate
+tuning_grid <- expand.grid(learn_rate = seq(0.0001, 0.3, length.out = 30))
+
+# create workflow for tuning learning rate
+sgb_lr_wf <- workflow() %>%
+  add_model(sgb_lr_spec) %>%
+  add_recipe(tracks_recipe)
+
+# tune learning rate using CV
+sgb_lr_tune <- tune_grid(sgb_lr_wf,
+                         resamples = cv_folds,
+                         grid = tuning_grid,
+                         metrics = metric_set(accuracy))
+
+# store optimized learning rate
+best_lr <- select_best(sgb_lr_tune)
+best_lr$learn_rate
+```
+
+#### Build preliminary model & tune tree parameters
+
+```{r}
+# specify model for tuning tree parameters
+sgb_tree_spec <- boost_tree(learn_rate = best_lr$learn_rate, # use optimized learning rate from previous step
+                        trees = 3000, # set number of trees to 3000
+                        tree_depth = tune(), # tune maximum tree depth
+                        min_n = tune(), # tune minimum n for a terminal node (minimum number of data points in a node that is required for the node to be split further)
+                        loss_reduction = tune(), # tune loss reduction (minimum loss required for further splits)
+                        mode = "regression",
+                        engine = "xgboost")
+
+# create tuning grid for tree parameters
+tuning_grid <- grid_latin_hypercube(tree_depth(),
+                                    min_n(),
+                                    loss_reduction(),
+                                    size = 10)
+
+# create workflow for tuning tree parameters
+sgb_tree_wf <- workflow() %>%
+  add_model(sgb_tree_spec) %>%
+  add_recipe(tracks_recipe)
+
+# tune tree parameters
+sgb_tree_tune <- tune_grid(sgb_tree_wf,
+                           resamples = cv_folds,
+                           grid = tuning_grid,
+                           metrics = metric_set(accuracy))
+
+# store optimized tree parameters
+best_tree <- select_best(sgb_tree_tune)
+```
+
+#### Tune stochasticity parameters
+
+```{r}
+
+```
+
 
 
 
