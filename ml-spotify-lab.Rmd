@@ -94,7 +94,9 @@ maxwell_tracks <- read.csv(here::here("data", "maxwell_songs.csv")) %>%
   mutate(name = "maxwell")
 
 # bind my liked songs df with partner df
-combined_tracks <- rbind(linus_tracks, maxwell_tracks)
+combined_tracks <- rbind(linus_tracks, maxwell_tracks) %>% 
+  rename(time_sig = time_signature) %>% 
+  select(-track.name, -type, -id, -uri, -track_href, -analysis_url) # remove irrelevent columns
 ```
 
 ## Data exploration
@@ -135,10 +137,6 @@ Hmisc::histbackback(split(combined_tracks$valence, combined_tracks$name),
 ## Data pre-processing
 
 ```{r}
-# remove irrelevant columns from combined_tracks df
-combined_tracks <- combined_tracks %>% 
-  select(-track.name, -type, -id, -uri, -track_href, -analysis_url)
-
 # initial split of data into training and testing sets (default 75/25)
 tracks_split <- initial_split(combined_tracks)
 tracks_test <- testing(tracks_split)
@@ -534,11 +532,25 @@ ggplot(metrics_tibble, aes(x = Method, y = Value, fill = Metric)) +
         legend.key.height = unit(10, "mm"))
 ```
 
+The Stochastic Gradient Boosting (SGB) model performed the best at predicting the testing data, slightly outperforming the random forest model and the bagged decision trees model. While both the SGB and random forest models had the same accuracy for correctly classifying songs that were in my collection, the SGB model was slightly better at accurately classifying songs that were in Maxwell's collection. When using a single decision tree, there was a significant drop-off in accuracy, largely due to difficulty classifying songs that were in Maxwell's collection.
+
+## Compare importance of predictor variables
+```{r}
+thing <- vip(sgb_fit, method = "model")
+```
+
+
 ```{r}
 # compare importance of different predictor variables in best performing model
-vip(sgb_fit, method = "model") +
-  ggtitle("Ten most important predictor variables in SGB model") +
+vip(sgb_fit, method = "model", num_features = 13) +
+  ggtitle("Importance of features in SGB model") +
   theme_minimal() +
-  theme(plot.title = element_text(hjust = 0.5),
-        axis.text.y = element_text(color = "black", size = 12))
+  geom_text(aes(label = sprintf("%.2f", Importance), # label values
+                x = Variable,
+                y = Importance + 0.005),
+            hjust = 0,
+            color = "black", size = 3.5) +
+    theme(plot.title = element_text(hjust = 0.5),
+          axis.text.y = element_text(color = "black", size = 12))
 ```
+In the SGB model, which was our best performing model, tempo was the most important variable for predicting whether a song was in my collection or Maxwell's, with an importance close to 0.20. Danceability and valence were also very important, both of which had an importance above 0.15. Energy and instrumentalness were also relatively important, each with an importance above 0.10.
