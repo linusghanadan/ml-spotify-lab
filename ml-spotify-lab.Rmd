@@ -1,0 +1,253 @@
+---
+title: "Building predictive user classification model with data from Spotify API"
+author: "Linus Ghanadan"
+date: "2023-02-07"
+output: html_document
+---
+
+## Background
+
+In this week's lab, we will build models that predict whether a given song is in your collection or in the collection of a partner from class. Specifically, we will compare the performance of models built using a single decision tree, bagged decision trees, a random forest, and stochastic gradient boosting.
+
+## Setup & API access
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(include = TRUE, message = FALSE, warning = FALSE)
+```
+
+```{r}
+# set seed
+set.seed(123)
+```
+
+```{r}
+# load packages
+library(tidyverse)
+library(tidymodels)
+library(here)
+library(patchwork)
+library(baguette)
+# library(spotifyr)
+
+# source API variable
+setwd(here::here())
+# api <- source('keys/keys.R')
+
+# access API using ID and SECRET
+# Sys.setenv(SPOTIFY_CLIENT_ID = '78d73a6f06864c0490376e08f8dc5b50')
+# Sys.setenv(SPOTIFY_CLIENT_SECRET = 'api')
+
+# set an authorization code (will need to retrieve data using R functions)
+# authorization_code <- get_spotify_authorization_code(scope = scopes()[c(1:19)])
+
+# receive access token from Spotify based on ID and SECRET
+# access_token <- get_spotify_access_token()
+```
+
+## Import & prepare data
+
+You can use get_my_saved_tracks() to request all your liked tracks. It would be good if you had at least 150-200 liked tracks so the model has enough data to work with.
+
+```{r}
+# for loop to retrieve 150 of my saved tracks
+offsets = seq(from = 0, to = 150, by = 50) # set offsets for for loop
+my_tracks <- data.frame(matrix(nrow = 0, ncol = 30)) # initialize an empty df 
+for (i in seq_along(offsets)) {  
+  liked_tracks = get_my_saved_tracks(authorization = authorization_code, limit = 50, 
+                                     offset = offsets[i])
+  df_temp = as.data.frame(liked_tracks) # create temporary data frame to store the 50 liked tracks from one iteration
+  my_tracks <- rbind(my_tracks, df_temp) # bind temporary data frame to my liked tracks data frame 
+}
+```
+
+These track audio features are the predictors we are interested in, but this dataframe doesn't have the actual names of the tracks. Append the 'track.name' column from your favorite tracks database.
+
+```{r}
+# get track audio features and bind into one df
+first100 <- get_track_audio_features(my_tracks$track.id[1:100])
+second100 <- get_track_audio_features(my_tracks$track.id[101:200])
+audio_features <- rbind(first100, second100)
+
+# create finalized df of my liked songs with tracks, audio features, and my name
+linus_tracks <- my_tracks %>% 
+  select(track.name) %>% 
+  cbind(audio_features) %>% 
+  mutate(name = "linus")
+
+# write CSV file to share with partner
+# write.csv(linus_tracks,'linus_tracks.csv', row.names = FALSE)
+```
+
+Find a class mate whose data you would like to use. Add your partner's data to your dataset. Create a new column that will contain the outcome variable that you will try to predict. This variable should contain two values that represent if the track came from your data set or your partner's.
+
+```{r}
+# read in my data (CSV that was previously written)
+linus_tracks <- read.csv(here::here("lab", "data", "linus_tracks.csv"))
+
+# read in partner data
+maxwell_tracks <- read.csv(here::here("lab", "data", "maxwell_songs.csv")) %>% 
+  mutate(name = "maxwell")
+
+# bind my liked songs df with partner df
+combined_tracks <- rbind(linus_tracks, maxwell_tracks)
+```
+
+## Data exploration
+
+```{r}
+# compare mean energy, instrumentalness, tempo, duration, mode, and valence
+combined_tracks %>%
+  group_by(name) %>%
+  summarise(mean_energy = mean(energy),
+            mean_instrumentalness = mean(instrumentalness),
+            mean_tempo = mean(tempo),
+            mean_duration = mean(duration_ms),
+            mean_mode = mean(mode),
+            mean_valence = mean(valence)) %>% 
+  ungroup()
+```
+
+
+```{r}
+# energy histograms
+Hmisc::histbackback(split(combined_tracks$energy, combined_tracks$name),
+             main = "Spotify liked songs comparison of energy", 
+             ylab = "energy",
+             xlab = c("linus", "maxwell"))
+```
+
+```{r}
+# instrumentalness histograms
+Hmisc::histbackback(split(combined_tracks$instrumentalness, combined_tracks$name),
+             main = "Spotify liked songs comparison of instrumentalness", 
+             ylab = "instrumentalness",
+             xlab = c("linus", "maxwell"))
+```
+
+```{r}
+# tempo histograms
+Hmisc::histbackback(split(combined_tracks$tempo, combined_tracks$name),
+             main = "Spotify liked songs comparison of tempo", 
+             ylab = "tempo",
+             xlab = c("linus", "maxwell"))
+```
+
+```{r}
+# duration histograms
+Hmisc::histbackback(split(combined_tracks$duration_ms, combined_tracks$name),
+             main = "Spotify liked songs comparison of duration", 
+             ylab = "duration (milliseconds)",
+             xlab = c("linus", "maxwell"))
+```
+
+```{r}
+# mode histograms
+Hmisc::histbackback(split(combined_tracks$mode, combined_tracks$name),
+             main = "Spotify liked songs comparison of mode", 
+             ylab = "mode",
+             xlab = c("linus", "maxwell"))
+```
+
+```{r}
+# valence histograms
+Hmisc::histbackback(split(combined_tracks$valence, combined_tracks$name),
+             main = "Spotify liked songs comparison of valence", 
+             ylab = "valence",
+             xlab = c("linus", "maxwell"))
+```
+
+## Data pre-processing
+
+```{r}
+# remove irrelevant columns from combined_tracks df
+combined_tracks <- combined_tracks %>% 
+  select(-track.name, -type, -id, -uri, -track_href, -analysis_url)
+
+# initial split of data into training and testing sets (default 75/25)
+tracks_split <- initial_split(combined_tracks)
+tracks_test <- testing(tracks_split)
+tracks_train <- training(tracks_split)
+
+# specify recipe for model preprocessing
+tracks_recipe <- recipe(name ~ ., data = tracks_train) %>%
+  step_dummy(all_nominal_predictors()) %>%
+  step_normalize(all_numeric_predictors()) %>%
+  prep() # prep recipe
+
+# bake training data using recipe
+baked_train <- bake(tracks_recipe, tracks_train)
+
+# create 10 folds of the training data set for CV
+cv_folds <- tracks_train %>% vfold_cv(v = 10)
+```
+
+## Decision tree model
+
+#### Build & tune model
+
+```{r}
+# specify model for tuning tree parameters
+single_tree_spec <- decision_tree(
+  cost_complexity = tune(), # tune cost complexity for pruning tree (prevent overfitting)
+  tree_depth = tune(), # tune maximum tree depth
+  min_n = tune()) %>% # tune minimum n for a terminal node (minimum number of data points in a node that is required for the node to be split further)
+  set_engine("rpart") %>%
+  set_mode("classification")
+
+# create tuning grid for tree parameters
+tuning_grid <- grid_latin_hypercube(cost_complexity(),
+                                  tree_depth(),
+                                  min_n(),
+                                  size = 10)
+
+# create workflow for tuning tree parameters
+single_tree_wf <- workflow() %>%
+  add_recipe(tracks_recipe) %>%
+  add_model(single_tree_spec)
+
+# tune tree parameters
+single_tree_tune <- tune_grid(single_tree_spec, 
+                              as.factor(name) ~ ., 
+                              resamples = cv_folds,
+                              grid = tuning_grid,
+                              metrics = metric_set(accuracy))
+
+# specify final model with optimized parameters
+single_tree_final <- finalize_model(single_tree_spec, select_best(single_tree_tune))
+
+# fit final model to training data
+single_tree_fit <- fit(single_tree_final, as.factor(name)~., tracks_train)
+```
+
+#### Predict testing data
+
+```{r}
+# predict testing data
+single_tree_predict <- predict(single_tree_fit, tracks_test) %>%
+  bind_cols(tracks_test) %>%  # bind to testing df
+  mutate(name = as.factor(name))
+
+# get probabilities for predictions made on testing data (to calculate ROC AUC)
+single_tree_predict <- predict(single_tree_fit, tracks_test, type = "prob") %>%
+  bind_cols(single_tree_predict) %>%  # bind to df that was just created
+  mutate(name = as.factor(name))
+
+# store confusion matrix for predictions made on testing data
+conf_matrix_tree <- single_tree_predict %>% 
+  conf_mat(truth = name, estimate = .pred_class) %>% 
+  autoplot(type = "heatmap") +
+  ggtitle("DT") +
+  theme_bw() +
+  theme(axis.text.x = element_text(angle = 30, hjust = 1),
+        legend.position = "none")
+
+# store error metrics of testing data predictions
+accuracy_tree <- accuracy(single_tree_predict, truth = name, estimate = .pred_class)
+roc_auc_tree <- roc_auc(single_tree_predict, truth = name, .pred_linus)
+
+```
+
+
+
+
+
