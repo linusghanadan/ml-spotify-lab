@@ -4,7 +4,7 @@
 These models were originally built for an assignment in my machine learning class. For the assignment, I built four different types of decision tree models that predict whether a given song was in my Spotify collection or in the collection my classmate Maxwell. Then, I compared performance across the four models. Specifically, I compare the performance of models built using a single decision tree, bagged decision trees, a random forest, and Stochastic Gradient Boosting (SGB).
 
 ## Repository contents
-    ml-kaggle-competition
+    ml-spotify-lab
     └───data
         │   My liked songs data (from Spotfiy API): linus_tracks.csv
         │   Maxwell's liked songs data (from Spotify API): maxwell_tracks.csv
