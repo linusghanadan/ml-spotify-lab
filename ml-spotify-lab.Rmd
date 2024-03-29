@@ -532,24 +532,22 @@ ggplot(metrics_tibble, aes(x = Method, y = Value, fill = Metric)) +
         legend.key.height = unit(10, "mm"))
 ```
 
-The Stochastic Gradient Boosting (SGB) model performed the best at predicting the testing data, slightly outperforming the random forest model and the bagged decision trees model. While both the SGB and random forest models had the same accuracy for correctly classifying songs that were in my collection, the SGB model was slightly better at accurately classifying songs that were in Maxwell's collection. When using a single decision tree, there was a significant drop-off in accuracy, largely due to difficulty classifying songs that were in Maxwell's collection.
+The Stochastic Gradient Boosting (SGB) model performed the best at predicting the testing data, slightly outperforming the random forest model. While both the SGB and random forest models had the same accuracy for correctly classifying songs that were in my collection, the SGB model was slightly better at accurately classifying songs that were in Maxwell's collection. When using a single decision tree, there was a significant drop-off in accuracy, largely due to difficulty classifying songs that were in Maxwell's collection.
 
 ## Compare importance of predictor variables
-```{r}
-thing <- vip(sgb_fit, method = "model")
-```
-
 
 ```{r}
 # compare importance of different predictor variables in best performing model
 vip(sgb_fit, method = "model", num_features = 13) +
   ggtitle("Importance of features in SGB model") +
   labs(caption = "Note: Importance of time_sig is <0.01") +
+  ylim(0.00, 0.20) +
   geom_text(aes(label = sprintf("%.2f", Importance), # label values
                 x = Variable,
                 y = Importance + 0.001),
             hjust = 0,
-            color = "black", size = 3.5) +
+            color = "black",
+            size = 3.5) +
   theme_minimal() +
   theme(plot.title = element_text(hjust = 0.5),
         axis.text.y = element_text(color = "black", size = 12))
