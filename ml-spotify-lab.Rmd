@@ -544,13 +544,15 @@ thing <- vip(sgb_fit, method = "model")
 # compare importance of different predictor variables in best performing model
 vip(sgb_fit, method = "model", num_features = 13) +
   ggtitle("Importance of features in SGB model") +
-  theme_minimal() +
+  labs(caption = "Note: Importance of time_sig is <0.01") +
   geom_text(aes(label = sprintf("%.2f", Importance), # label values
                 x = Variable,
-                y = Importance + 0.005),
+                y = Importance + 0.001),
             hjust = 0,
             color = "black", size = 3.5) +
-    theme(plot.title = element_text(hjust = 0.5),
-          axis.text.y = element_text(color = "black", size = 12))
+  theme_minimal() +
+  theme(plot.title = element_text(hjust = 0.5),
+        axis.text.y = element_text(color = "black", size = 12))
 ```
-In the SGB model, which was our best performing model, tempo was the most important variable for predicting whether a song was in my collection or Maxwell's, with an importance close to 0.20. Danceability and valence were also very important, both of which had an importance above 0.15. Energy and instrumentalness were also relatively important, each with an importance above 0.10.
+
+In the SGB model, which was the best performing model, tempo was the most important feature for predicting whether a song was in my collection or Maxwell's, with an importance close to 0.20. Valence, danceability, energy, and instrumentalness were also important features.
