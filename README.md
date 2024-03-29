@@ -15,3 +15,4 @@ These models were originally built for an assignment in my machine learning clas
         │   Feature importance plot for SGB model: plot-4.png
     │   README.md
     │   .Rmd
+    │   .Rproj
