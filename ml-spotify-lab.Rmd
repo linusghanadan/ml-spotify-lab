@@ -101,38 +101,54 @@ combined_tracks <- rbind(linus_tracks, maxwell_tracks) %>%
 
 ## Data exploration
 
+Our data set contains 13 features that might be useful for predicting whether a song is in my collection or Maxwell's. I'll start by exploring what these 13 features are and how some of them vary between Maxwell's liked songs and my own. Note that the first 13 columns contain the features we are looking at, and the 14th column contains our outcome variable 'name', which is either 'linus' or 'maxwell' depending on whose collection it is from.
+
+In the following code, we look at a summarized breakdown of each column in the combined tracks data frame and then take a closer look at how Maxwell and I differ in terms of the tempo and danceability of our liked songs.
+
 ```{r}
 # look at summary of columns
 summary(combined_tracks)
 ```
 
-
 ```{r}
-# compare mean of certain features for Linus and Maxwell
+# compare mean of tempo and danceability for Linus and Maxwell
 combined_tracks %>%
   group_by(name) %>%
   summarise(mean_tempo = mean(tempo),
             mean_danceability = mean(danceability),
-            mean_valence = mean(valence)) %>% 
+            mean_instrumentalness = mean(instrumentalness)) %>% 
   ungroup()
 ```
 
-
 ```{r}
-# compare distribution of certain features for Linus and Maxwell
+# compare distribution of tempo for Linus and Maxwell
 Hmisc::histbackback(split(combined_tracks$tempo, combined_tracks$name),
              main = "Spotify liked songs comparison of tempo", 
              ylab = "tempo",
              xlab = c("linus", "maxwell"))
+```
+
+While the liked songs of Maxwell and I have a very similar mean tempo, the tempo of my liked songs exhibits a significantly wider distribution.
+
+```{r}
+# compare distribution of danceability for Linus and Maxwell
 Hmisc::histbackback(split(combined_tracks$instrumentalness, combined_tracks$name),
              main = "Spotify liked songs comparison of danceability", 
              ylab = "danceability",
              xlab = c("linus", "maxwell"))
-Hmisc::histbackback(split(combined_tracks$valence, combined_tracks$name),
-             main = "Spotify liked songs comparison of valence", 
-             ylab = "valence",
+```
+
+Maxwell's collection has a slightly higher mean danceability, and the distribution for his songs is more left skewed compared to mine.
+
+```{r}
+# compare distribution of instrumentalness for Linus and Maxwell
+Hmisc::histbackback(split(combined_tracks$instrumentalness, combined_tracks$name),
+             main = "Spotify liked songs comparison of instrumentalness", 
+             ylab = "instrumentalness",
              xlab = c("linus", "maxwell"))
 ```
+
+The mean instrumentalness of Maxwell's songs is more than twice that of the mean for my collection, and this is reflected in the histogram by the larger proportion of my songs with an instrumentalness of zero.
 
 ## Data pre-processing
 
