@@ -132,7 +132,7 @@ While the liked songs of Maxwell and I have a very similar mean tempo, the tempo
 
 ```{r}
 # compare distribution of danceability for Linus and Maxwell
-Hmisc::histbackback(split(combined_tracks$instrumentalness, combined_tracks$name),
+Hmisc::histbackback(split(combined_tracks$danceability, combined_tracks$name),
              main = "Spotify liked songs comparison of danceability", 
              ylab = "danceability",
              xlab = c("linus", "maxwell"))
